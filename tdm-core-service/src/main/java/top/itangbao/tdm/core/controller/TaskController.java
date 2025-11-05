@@ -9,6 +9,7 @@ import top.itangbao.tdm.core.model.Task;
 import top.itangbao.tdm.core.model.TaskStatus;
 import top.itangbao.tdm.core.repository.ProjectRepository;
 import top.itangbao.tdm.core.repository.TaskRepository;
+import top.itangbao.tdm.core.service.SparkOrchestrationService;
 import top.itangbao.tdm.core.service.StorageService;
 
 import java.util.Map;
@@ -21,6 +22,7 @@ public class TaskController {
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
     private final StorageService storageService;
+    private final SparkOrchestrationService sparkService;
 
     // (DTO) 用于创建任务的请求体
     record CreateTaskRequest(String name, Long projectId) {}
@@ -67,5 +69,33 @@ public class TaskController {
         taskRepository.save(task);
 
         return ResponseEntity.ok(Map.of("message", "File uploaded successfully", "rawDataUri", rawDataUri));
+    }
+
+    @PostMapping("/{taskId}/run-etl")
+    public ResponseEntity<Map<String, String>> runEtlJob(@PathVariable Long taskId) {
+
+        // 1. 验证任务是否存在且文件已上传
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
+
+        if (task.getRawDataUri() == null || task.getRawDataUri().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Raw data file has not been uploaded yet."));
+        }
+
+        if (task.getStatus() == TaskStatus.ETL_RUNNING) {
+            return ResponseEntity.status(409).body(Map.of("message", "ETL job is already running for this task.")); // 409 Conflict
+        }
+
+        // 2. (核心) 提交 Spark 任务
+        sparkService.submitEtlJob(task.getId(), task.getRawDataUri());
+
+        // 3. 更新元数据状态
+        task.setStatus(TaskStatus.ETL_RUNNING);
+        taskRepository.save(task);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "ETL job submitted successfully.",
+                "taskId", String.valueOf(taskId)
+        ));
     }
 }
