@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # 1. MySQL 数据库服务
+  mysql_db:
+    image: mysql:8.0
+    container_name: tdm_mysql
+    ports:
+      - "3306:3306" # 暴露 3306 端口给 Spring Boot 连接
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword # 设置 root 密码
+      MYSQL_DATABASE: tdm_metadata_db # 自动创建数据库
+      MYSQL_USER: tdm_user
+      MYSQL_PASSWORD: tdm_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. TDM 核心服务 (Spring Boot)
+  tdm-core-service:
+    build: . # 告诉 docker-compose 在当前目录寻找 Dockerfile
+    container_name: tdm_core_service
+    ports:
+      - "8080:8080" # 暴露 API 端口
+    environment:
+      # (关键) Spring Boot 连接 MySQL 的配置
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql_db:3306/tdm_metadata_db?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: tdm_user
+      SPRING_DATASOURCE_PASSWORD: tdm_password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update # 开发时自动更新表结构
+      SPRING_JPA_SHOW_SQL: 'true'
+    depends_on:
+      mysql_db:
+        condition: service_healthy # 等待 MySQL 健康后才启动
+
+volumes:
+  mysql_data: # 持久化 MySQL 数据
