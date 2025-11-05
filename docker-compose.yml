@@ -20,6 +20,25 @@ services:
       timeout: 5s
       retries: 5
 
+
+  minio:
+    image: quay.io/minio/minio:latest # 一个稳定的 MinIO 镜像
+    container_name: tdm_minio
+    ports:
+      - "9000:9000" # API 端口
+      - "9001:9001" # Web UI 端口
+    environment:
+      MINIO_ROOT_USER: minioadmin     # MinIO 登录名
+      MINIO_ROOT_PASSWORD: minioadmin # MinIO 登录密码
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001" # 启动服务器并开放 UI
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # 2. TDM 核心服务 (Spring Boot)
   tdm-core-service:
     build: . # 告诉 docker-compose 在当前目录寻找 Dockerfile
@@ -36,6 +55,10 @@ services:
     depends_on:
       mysql_db:
         condition: service_healthy # 等待 MySQL 健康后才启动
+      minio:
+        condition: service_healthy
+
 
 volumes:
   mysql_data: # 持久化 MySQL 数据
+  minio_data: # 持久化 MinIO 数据
