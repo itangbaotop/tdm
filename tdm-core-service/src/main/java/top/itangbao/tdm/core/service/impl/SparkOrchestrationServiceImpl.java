@@ -82,7 +82,7 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
 
                 int exitCode = process.waitFor();
 
-                updateTaskStatus(taskId, exitCode);
+                updateTaskStatus(taskId, exitCode, (exitCode == 0) ? warehouseTable : null);
 
             } catch (IOException | InterruptedException e) {
                 log.error("Failed to execute Spark job for Task {}", taskId, e);
@@ -119,12 +119,14 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         command.add(warehousePort);
         command.add("--warehouse-table");
         command.add(warehouseTable);
+        command.add("--warehouse-profile");
+        command.add("clickhouse"); // 默认使用ClickHouse
 
         log.info("Executing Spark command (in WSL): {}", String.join(" ", command));
         return command;
     }
 
-    private void updateTaskStatus(Long taskId, int exitCode) {
+    private void updateTaskStatus(Long taskId, int exitCode, String newWarehouseTable) {
         try {
             Task task = taskRepository.findById(taskId)
                     .orElseThrow(() -> new RuntimeException("Task not found while updating status: " + taskId));
@@ -132,6 +134,7 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
             if (exitCode == 0) {
                 log.info("Spark Job (Task {}) finished successfully.", taskId);
                 task.setStatus(TaskStatus.ETL_COMPLETE); // 成功
+                task.setWarehouseTableName(newWarehouseTable); // 保存表名
 
             } else {
                 log.error("Spark Job (Task {}) failed with exit code {}.", taskId, exitCode);

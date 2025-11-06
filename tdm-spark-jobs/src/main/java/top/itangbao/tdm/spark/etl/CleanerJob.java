@@ -4,11 +4,8 @@ import org.apache.spark.sql.*;
 // 导入 Spark SQL 函数
 
 import java.util.Properties;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.Statement;
-import java.util.Arrays;
-import java.util.stream.Collectors;
+import top.itangbao.tdm.spark.warehouse.WarehouseWriter;
+import top.itangbao.tdm.spark.warehouse.WarehouseWriterFactory;
 
 import static org.apache.spark.sql.functions.*;
 
@@ -22,6 +19,7 @@ public class CleanerJob {
         String warehouseHost = "";
         String warehousePort = "";
         String warehouseTable = "";
+        String warehouseProfile = "clickhouse"; // 默认使用ClickHouse
 
         for (int i = 0; i < args.length; i++) {
             if ("--input-uri".equals(args[i])) {
@@ -34,6 +32,8 @@ public class CleanerJob {
                 warehousePort = args[++i];
             } else if ("--warehouse-table".equals(args[i])) { // 【新增】
                 warehouseTable = args[++i];
+            } else if ("--warehouse-profile".equals(args[i])) { // 【新增】
+                warehouseProfile = args[++i];
             }
         }
 
@@ -67,32 +67,28 @@ public class CleanerJob {
                     .option("header", "true")
                     .csv(inputUri);
             
-            // ClickHouse JDBC 属性
-            Properties properties = new Properties();
-            properties.put("driver", "com.clickhouse.jdbc.ClickHouseDriver");
-            properties.put("user", "root");
-            properties.put("password", "root");
-            
-            // 自动创建表（基于第一行标题）
-            createTableFromCsvHeader(clickhouseJdbcUrl, warehouseTable, rawCsvData, properties);
-            
-            // 数据清洗（过滤空值）
-            Dataset<Row> cleanedData = rawCsvData.na().drop();
+            // 数据清洗（只过滤全部为空的行）
+            System.out.println("Raw data count: " + rawCsvData.count());
+            Dataset<Row> cleanedData = rawCsvData.na().drop("all"); // 只删除全部列都为空的行
+            System.out.println("Cleaned data count: " + cleanedData.count());
 
             System.out.println("====== Cleaned data (Top 5) ======");
             cleanedData.show(5, false);
+            
+            if (cleanedData.count() == 0) {
+                System.err.println("Warning: No data to write after cleaning!");
+                return;
+            }
 
             // 5. 【【核心：L (加载/入库)】】
-            //    将数据写入 ClickHouse
-
-
-
-
-
-            cleanedData
-                    .write()
-                    .mode(SaveMode.Append) // 我们总是追加数据
-                    .jdbc(clickhouseJdbcUrl, warehouseTable, properties);
+            // 使用工厂模式选择数据仓库writer
+            WarehouseWriter writer = WarehouseWriterFactory.createWriter(warehouseProfile);
+            
+            // 自动创建表
+            writer.createTableIfNotExists(rawCsvData, warehouseTable, clickhouseJdbcUrl);
+            
+            // 写入数据
+            writer.write(cleanedData, warehouseTable, clickhouseJdbcUrl);
 
             System.out.println("Spark Job completed successfully. Data written to ClickHouse.");
 
@@ -105,35 +101,5 @@ public class CleanerJob {
         }
     }
 
-    private static void createTableFromCsvHeader(String jdbcUrl, String tableName, Dataset<Row> csvData, Properties properties) {
-        // 获取CSV的列名
-        String[] columns = csvData.columns();
-        
-        // 构建建表SQL（所有字段都使用String类型）
-        String columnDefinitions = Arrays.stream(columns)
-                .map(col -> col + " String")
-                .collect(Collectors.joining(", "));
-        
-        String createTableSql = String.format(
-            "CREATE TABLE IF NOT EXISTS %s (" +
-            "%s, " +
-            "created_time DateTime DEFAULT now()" +
-            ") ENGINE = MergeTree() " +
-            "ORDER BY (%s, created_time) " +
-            "PARTITION BY toYYYYMM(created_time)",
-            tableName, columnDefinitions, columns[0] // 使用第一列作为主键
-        );
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, properties);
-             Statement stmt = conn.createStatement()) {
-            
-            System.out.println("Auto-creating table with SQL: " + createTableSql);
-            stmt.execute(createTableSql);
-            System.out.println("Table created successfully: " + tableName);
-            
-        } catch (Exception e) {
-            System.err.println("Failed to create table: " + e.getMessage());
-            throw new RuntimeException("Table creation failed", e);
-        }
-    }
 }
