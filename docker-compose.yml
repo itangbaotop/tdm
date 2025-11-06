@@ -39,6 +39,20 @@ services:
       timeout: 5s
       retries: 5
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.4
+    container_name: tdm_clickhouse
+    ports:
+      - "8123:8123" # HTTP 接口
+      - "9002:9000" # 原生 TCP 接口 (Spark 将使用这个)
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # 2. TDM 核心服务 (Spring Boot)
   tdm-core-service:
     build: . # 告诉 docker-compose 在当前目录寻找 Dockerfile
@@ -57,8 +71,11 @@ services:
         condition: service_healthy # 等待 MySQL 健康后才启动
       minio:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
 
 
 volumes:
   mysql_data: # 持久化 MySQL 数据
   minio_data: # 持久化 MinIO 数据
+  clickhouse_data: # 持久化 ClickHouse 数据

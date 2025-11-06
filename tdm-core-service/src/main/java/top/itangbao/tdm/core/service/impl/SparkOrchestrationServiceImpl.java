@@ -12,10 +12,8 @@ import top.itangbao.tdm.core.service.SparkOrchestrationService;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @Slf4j
@@ -31,19 +29,35 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
     @Value("${spark.job.jar-path}")
     private String sparkJobJarPath;
 
+    @Value("${warehouse.clickhouse.host}")
+    private String warehouseHost;
+    @Value("${warehouse.clickhouse.port.http}")
+    private String warehousePort;
+    @Value("${warehouse.clickhouse.database}")
+    private String warehouseDatabase;
+
+
     private final TaskRepository taskRepository;
 
     @Override
     public void submitEtlJob(Long taskId, String inputUri) {
         log.info("Submitting Spark ETL job for Task ID: {}", taskId);
 
-        // 1. 构建 Fat JAR 的绝对路径
-        // (假设 `tdm-core-service` 和 `tdm-spark-jobs` 在同一父目录下)
-        String jobJarAbsolutePath = new File(sparkJobJarPath).getAbsolutePath();
+        String jobJarAbsolutePath;
+        try {
+            jobJarAbsolutePath = new File(sparkJobJarPath).getCanonicalPath();
+        } catch (IOException e) {
+            log.error("Could not resolve spark job jar path: {}", sparkJobJarPath, e);
+            throw new RuntimeException("Spark job jar not found", e);
+        }
         log.info("Spark Job JAR path: {}", jobJarAbsolutePath);
 
+        // 使用固定的word_data表
+        String warehouseTable = String.format("%s.word_data", warehouseDatabase);
+
+
         // 2. 构建 spark-submit 命令
-        List<String> command = getCommand(taskId, inputUri, jobJarAbsolutePath);
+        List<String> command = getCommand(taskId, inputUri, jobJarAbsolutePath, warehouseTable);
 
         log.info("Executing Spark command: {}", String.join(" ", command));
 
@@ -78,7 +92,7 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
     }
 
     @NotNull
-    private List<String> getCommand(Long taskId, String inputUri, String jobJarAbsolutePath) {
+    private List<String> getCommand(Long taskId, String inputUri, String jobJarAbsolutePath, String warehouseTable) {
         List<String> command = new ArrayList<>();
         command.add(sparkSubmitPath);
 
@@ -98,6 +112,15 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         command.add(inputUri);
         command.add("--task-id");
         command.add(String.valueOf(taskId));
+
+        command.add("--warehouse-host");
+        command.add(warehouseHost);
+        command.add("--warehouse-port");
+        command.add(warehousePort);
+        command.add("--warehouse-table");
+        command.add(warehouseTable);
+
+        log.info("Executing Spark command (in WSL): {}", String.join(" ", command));
         return command;
     }
 
@@ -109,9 +132,10 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
             if (exitCode == 0) {
                 log.info("Spark Job (Task {}) finished successfully.", taskId);
                 task.setStatus(TaskStatus.ETL_COMPLETE); // 成功
+
             } else {
                 log.error("Spark Job (Task {}) failed with exit code {}.", taskId, exitCode);
-                task.setStatus(TaskStatus.ETL_FAILED); // 失败 (新状态)
+                task.setStatus(TaskStatus.ETL_FAILED); // 失败
             }
             taskRepository.save(task);
 
