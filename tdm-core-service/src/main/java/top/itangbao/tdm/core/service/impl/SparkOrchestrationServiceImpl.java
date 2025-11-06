@@ -36,6 +36,8 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
     @Value("${warehouse.clickhouse.database}")
     private String warehouseDatabase;
 
+    @Value("${spring.datasource.url}")
+    private String datasourceUrl;
 
     private final TaskRepository taskRepository;
 
@@ -145,5 +147,62 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         } catch (Exception e) {
             log.error("CRITICAL: Failed to update task status for Task {} after job completion.", taskId, e);
         }
+    }
+
+    @Override
+    public void submitAnalysisJob(Long taskId, String query, String resultId) {
+        log.info("Submitting Spark Analysis job for Task ID: {}, Result ID: {}", taskId, resultId);
+
+        String jobJarAbsolutePath;
+        try {
+            jobJarAbsolutePath = new File(sparkJobJarPath).getCanonicalPath();
+        } catch (IOException e) {
+            log.error("Could not resolve spark job jar path: {}", sparkJobJarPath, e);
+            throw new RuntimeException("Spark job jar not found", e);
+        }
+
+        List<String> command = new ArrayList<>();
+        command.add(sparkSubmitPath);
+        command.add("--class");
+        command.add("top.itangbao.tdm.spark.analysis.FFTJob");
+        command.add("--master");
+        command.add(sparkMasterUrl);
+        command.add(jobJarAbsolutePath);
+        
+        command.add("--input-profile");
+        command.add("clickhouse");
+        command.add("--input-query");
+        command.add(query);
+        command.add("--result-id");
+        command.add(resultId);
+        command.add("--mysql-url");
+        command.add(datasourceUrl); // 这里实际是MySQL URL
+        command.add("--clickhouse-url");
+        command.add(String.format("jdbc:clickhouse://%s:%s/tdm_data", warehouseHost, warehousePort));
+
+        log.info("Executing Analysis command: {}", String.join(" ", command));
+
+        new Thread(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+
+                try (var reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        log.info("[Analysis Job {}]: {}", resultId, line);
+                    }
+                }
+
+                int exitCode = process.waitFor();
+                log.info("Analysis Job {} finished with exit code: {}", resultId, exitCode);
+
+            } catch (IOException | InterruptedException e) {
+                log.error("Failed to execute Analysis job for Result {}", resultId, e);
+                Thread.currentThread().interrupt();
+            }
+        }).start();
     }
 }

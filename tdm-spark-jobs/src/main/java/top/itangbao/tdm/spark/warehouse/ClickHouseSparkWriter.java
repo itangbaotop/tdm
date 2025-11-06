@@ -35,6 +35,14 @@ public class ClickHouseSparkWriter implements WarehouseWriter {
                 .map(col -> col + " Nullable(String)")
                 .collect(Collectors.joining(", "));
         
+        // ORDER BY中的第一列不能为Nullable
+        String firstColumnDef = columns[0] + " String";
+        String otherColumnsDef = Arrays.stream(columns).skip(1)
+                .map(col -> col + " Nullable(String)")
+                .collect(Collectors.joining(", "));
+        
+        columnDefinitions = otherColumnsDef.isEmpty() ? firstColumnDef : firstColumnDef + ", " + otherColumnsDef;
+        
         String createTableSql = String.format(
             "CREATE TABLE IF NOT EXISTS %s (" +
             "%s, " +
