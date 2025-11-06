@@ -1,17 +1,25 @@
 package top.itangbao.tdm.core.service.impl;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import top.itangbao.tdm.core.model.Task;
+import top.itangbao.tdm.core.model.TaskStatus;
+import top.itangbao.tdm.core.repository.TaskRepository;
 import top.itangbao.tdm.core.service.SparkOrchestrationService;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class SparkOrchestrationServiceImpl implements SparkOrchestrationService {
 
     @Value("${spark.submit.path}")
@@ -23,6 +31,8 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
     @Value("${spark.job.jar-path}")
     private String sparkJobJarPath;
 
+    private final TaskRepository taskRepository;
+
     @Override
     public void submitEtlJob(Long taskId, String inputUri) {
         log.info("Submitting Spark ETL job for Task ID: {}", taskId);
@@ -33,19 +43,7 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         log.info("Spark Job JAR path: {}", jobJarAbsolutePath);
 
         // 2. 构建 spark-submit 命令
-        List<String> command = new ArrayList<>();
-        command.add(sparkSubmitPath);
-        command.add("--class");
-        command.add("top.itangbao.tdm.spark.etl.CleanerJob"); // 我们 Spark 任务的主类
-        command.add("--master");
-        command.add(sparkMasterUrl);
-        command.add(jobJarAbsolutePath); // JAR 包
-
-        // 3. 添加 Spark 任务所需的参数
-        command.add("--input-uri");
-        command.add(inputUri);
-        command.add("--task-id");
-        command.add(String.valueOf(taskId));
+        List<String> command = getCommand(taskId, inputUri, jobJarAbsolutePath);
 
         log.info("Executing Spark command: {}", String.join(" ", command));
 
@@ -69,17 +67,56 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
                 }
 
                 int exitCode = process.waitFor();
-                if (exitCode == 0) {
-                    log.info("Spark Job (Task {}) finished successfully.", taskId);
-                    // TODO (阶段 4): 在这里更新 MySQL 状态为 ETL_COMPLETE
-                } else {
-                    log.error("Spark Job (Task {}) failed with exit code {}.", taskId, exitCode);
-                }
+
+                updateTaskStatus(taskId, exitCode);
 
             } catch (IOException | InterruptedException e) {
-                log.error("Failed to execute Spark job for Task " + taskId, e);
+                log.error("Failed to execute Spark job for Task {}", taskId, e);
                 Thread.currentThread().interrupt();
             }
         }).start();
+    }
+
+    @NotNull
+    private List<String> getCommand(Long taskId, String inputUri, String jobJarAbsolutePath) {
+        List<String> command = new ArrayList<>();
+        command.add(sparkSubmitPath);
+
+        command.add("--class");
+        command.add("top.itangbao.tdm.spark.etl.CleanerJob");
+
+        command.add("--master");
+        command.add(sparkMasterUrl);
+
+        command.add("--conf");
+        command.add("spark.hadoop.fs.s3a.endpoint=http://localhost:9000");
+
+        command.add(jobJarAbsolutePath); // JAR 包
+
+        // 3. 添加 Spark 任务所需的参数
+        command.add("--input-uri");
+        command.add(inputUri);
+        command.add("--task-id");
+        command.add(String.valueOf(taskId));
+        return command;
+    }
+
+    private void updateTaskStatus(Long taskId, int exitCode) {
+        try {
+            Task task = taskRepository.findById(taskId)
+                    .orElseThrow(() -> new RuntimeException("Task not found while updating status: " + taskId));
+
+            if (exitCode == 0) {
+                log.info("Spark Job (Task {}) finished successfully.", taskId);
+                task.setStatus(TaskStatus.ETL_COMPLETE); // 成功
+            } else {
+                log.error("Spark Job (Task {}) failed with exit code {}.", taskId, exitCode);
+                task.setStatus(TaskStatus.ETL_FAILED); // 失败 (新状态)
+            }
+            taskRepository.save(task);
+
+        } catch (Exception e) {
+            log.error("CRITICAL: Failed to update task status for Task {} after job completion.", taskId, e);
+        }
     }
 }

@@ -1,6 +1,7 @@
 package top.itangbao.tdm.core.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -51,7 +52,7 @@ public class TaskController {
     }
 
     // API: 【阶段 2 核心】上传原始文件
-    @PostMapping("/{taskId}/upload-raw-file")
+    @PostMapping(value = "/{taskId}/upload-raw-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, String>> uploadRawFile(
             @PathVariable Long taskId,
             @RequestParam("file") MultipartFile file) {

@@ -12,8 +12,9 @@
     <artifactId>tdm-spark-jobs</artifactId>
 
     <properties>
-
+        <hadoop.version>3.3.4</hadoop.version>
         <spark.version>3.5.1</spark.version>
+        <aws-java-sdk.version>1.12.510</aws-java-sdk.version>
     </properties>
 
     <dependencies>
@@ -31,13 +32,20 @@
 
         <dependency>
             <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>${hadoop.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-aws</artifactId>
-            <version>3.3.6</version> </dependency>
+            <version>${hadoop.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-bundle</artifactId>
-            <version>1.12.723</version>
+            <version>${aws-java-sdk.version}</version>
         </dependency>
     </dependencies>
 

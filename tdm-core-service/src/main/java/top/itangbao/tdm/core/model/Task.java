@@ -16,7 +16,7 @@ public class Task {
     private String name;
 
     @Enumerated(EnumType.STRING) // 将枚举按字符串存储
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private TaskStatus status;
 
     // 任务的原始数据文件在数据湖中的路径

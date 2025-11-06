@@ -28,13 +28,11 @@ public class CleanerJob {
         System.out.printf("Reading from: %s%n", inputUri);
 
         // 2.【关键】配置 SparkSession 以连接 MinIO
-        // 我们硬编码 MinIO 配置，因为 Spark 任务很难从 Spring Boot 获取配置
         SparkSession spark = SparkSession.builder()
                 .appName("TDM ETL Cleaner Job - Task " + taskId)
-                .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") // 假设 Spark 也能访问 Docker 的 'minio' 主机
                 .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
                 .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
-                .config("spark.hadoop.fs.s3a.path.style.access", "true") // 必须!
+                .config("spark.hadoop.fs.s3a.path.style.access", "true")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .getOrCreate();
 
