@@ -22,6 +22,9 @@ public class Task {
     // 任务的原始数据文件在数据湖中的路径
     private String rawDataUri;
 
+    // 数据清洗后在数据仓库中的表名
+    private String warehouseTableName;
+
 
 
     // 关系：一个任务属于一个项目
