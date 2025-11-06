@@ -52,8 +52,8 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         }
         log.info("Spark Job JAR path: {}", jobJarAbsolutePath);
 
-        // 使用固定的word_data表
-        String warehouseTable = String.format("%s.word_data", warehouseDatabase);
+        // 使用动态表名（基于CSV文件名或任务ID）
+        String warehouseTable = String.format("%s.task_%d_data", warehouseDatabase, taskId);
 
 
         // 2. 构建 spark-submit 命令

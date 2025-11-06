@@ -4,6 +4,11 @@ import org.apache.spark.sql.*;
 // 导入 Spark SQL 函数
 
 import java.util.Properties;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import static org.apache.spark.sql.functions.*;
 
@@ -57,13 +62,22 @@ public class CleanerJob {
             // 3. (读取) 读取CSV文件 - 移到转换部分
 
             // 4. 【【核心：T (转换/清洗)】】
-            // 假设输入是CSV格式：word,phonetic,definition,translation,pos,collins,oxford,tag,bnc,frq,exchange,detail,audio
-            Dataset<Row> cleanedData = spark.read()
+            // 读取CSV文件并自动创建表
+            Dataset<Row> rawCsvData = spark.read()
                     .option("header", "true")
-                    .option("inferSchema", "true")
-                    .csv(inputUri)
-                    .filter(col("word").isNotNull())
-                    .filter(not(trim(col("word")).equalTo("")));
+                    .csv(inputUri);
+            
+            // ClickHouse JDBC 属性
+            Properties properties = new Properties();
+            properties.put("driver", "com.clickhouse.jdbc.ClickHouseDriver");
+            properties.put("user", "root");
+            properties.put("password", "root");
+            
+            // 自动创建表（基于第一行标题）
+            createTableFromCsvHeader(clickhouseJdbcUrl, warehouseTable, rawCsvData, properties);
+            
+            // 数据清洗（过滤空值）
+            Dataset<Row> cleanedData = rawCsvData.na().drop();
 
             System.out.println("====== Cleaned data (Top 5) ======");
             cleanedData.show(5, false);
@@ -71,12 +85,7 @@ public class CleanerJob {
             // 5. 【【核心：L (加载/入库)】】
             //    将数据写入 ClickHouse
 
-            // ClickHouse Spark 连接器需要 JDBC 属性
-            Properties properties = new Properties();
-            properties.put("driver", "com.clickhouse.jdbc.ClickHouseDriver");
-            properties.put("user", "root");
-            properties.put("password", "root");
-            // (更多 ClickHouse 优化参数可以在这里添加)
+
 
 
 
@@ -96,5 +105,35 @@ public class CleanerJob {
         }
     }
 
+    private static void createTableFromCsvHeader(String jdbcUrl, String tableName, Dataset<Row> csvData, Properties properties) {
+        // 获取CSV的列名
+        String[] columns = csvData.columns();
+        
+        // 构建建表SQL（所有字段都使用String类型）
+        String columnDefinitions = Arrays.stream(columns)
+                .map(col -> col + " String")
+                .collect(Collectors.joining(", "));
+        
+        String createTableSql = String.format(
+            "CREATE TABLE IF NOT EXISTS %s (" +
+            "%s, " +
+            "created_time DateTime DEFAULT now()" +
+            ") ENGINE = MergeTree() " +
+            "ORDER BY (%s, created_time) " +
+            "PARTITION BY toYYYYMM(created_time)",
+            tableName, columnDefinitions, columns[0] // 使用第一列作为主键
+        );
 
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, properties);
+             Statement stmt = conn.createStatement()) {
+            
+            System.out.println("Auto-creating table with SQL: " + createTableSql);
+            stmt.execute(createTableSql);
+            System.out.println("Table created successfully: " + tableName);
+            
+        } catch (Exception e) {
+            System.err.println("Failed to create table: " + e.getMessage());
+            throw new RuntimeException("Table creation failed", e);
+        }
+    }
 }
