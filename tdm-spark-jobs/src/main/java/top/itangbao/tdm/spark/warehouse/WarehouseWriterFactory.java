@@ -6,6 +6,8 @@ public class WarehouseWriterFactory {
         switch (profile.toLowerCase()) {
             case "clickhouse":
                 return new ClickHouseSparkWriter();
+            case "influxdb":
+                return new InfluxDBSparkWriter();
             case "doris":
                 // TODO: 实现DorisSparkWriter
                 throw new UnsupportedOperationException("Doris writer not implemented yet");

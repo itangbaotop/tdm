@@ -122,7 +122,7 @@ public class SparkOrchestrationServiceImpl implements SparkOrchestrationService 
         command.add("--warehouse-table");
         command.add(warehouseTable);
         command.add("--warehouse-profile");
-        command.add("clickhouse"); // 默认使用ClickHouse
+        command.add("influxdb"); // 默认使用ClickHouse，可配置为influxdb
 
         log.info("Executing Spark command (in WSL): {}", String.join(" ", command));
         return command;

@@ -84,11 +84,19 @@ public class CleanerJob {
             // 使用工厂模式选择数据仓库writer
             WarehouseWriter writer = WarehouseWriterFactory.createWriter(warehouseProfile);
             
+            // 根据仓库类型构建正确的URL
+            String warehouseUrl;
+            if ("influxdb".equals(warehouseProfile)) {
+                warehouseUrl = "jdbc:influxdb://" + warehouseHost + ":8086";
+            } else {
+                warehouseUrl = clickhouseJdbcUrl;
+            }
+            
             // 自动创建表
-            writer.createTableIfNotExists(rawCsvData, warehouseTable, clickhouseJdbcUrl);
+            writer.createTableIfNotExists(rawCsvData, warehouseTable, warehouseUrl);
             
             // 写入数据
-            writer.write(cleanedData, warehouseTable, clickhouseJdbcUrl);
+            writer.write(cleanedData, warehouseTable, warehouseUrl);
 
             System.out.println("Spark Job completed successfully. Data written to ClickHouse.");
 
