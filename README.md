@@ -99,6 +99,3 @@ curl -X POST http://localhost:8080/api/v1/tasks/1/run-analysis \
 - **API文档**: http://localhost:8080/swagger-ui.html
 - **MinIO控制台**: http://localhost:9001 (admin/password)
 - **ClickHouse**: http://localhost:8123
-
-## 📝 许可证
-MIT License
