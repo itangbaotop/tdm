@@ -1,0 +1,63 @@
+version: '3.8'
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+
+networks:
+  hadoop:
+    driver: bridge
+
+services:
+  # HDFS NameNode
+  namenode:
+    image: apache/hadoop:3
+    container_name: namenode
+    hostname: namenode
+    restart: always
+    ports:
+      - "9870:9870"  # NameNode Web UI
+      - "9000:9000"  # HDFS RPC
+    volumes:
+      - hadoop_namenode:/opt/hadoop/data/namenode
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HDFS_CONF_dfs_replication=1
+    networks:
+      - hadoop
+    command: ["/opt/hadoop/bin/hdfs", "namenode", "-format", "-force"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # HDFS DataNode
+  datanode:
+    image: apache/hadoop:3
+    container_name: datanode
+    hostname: datanode
+    restart: always
+    ports:
+      - "9864:9864"  # DataNode Web UI
+    depends_on:
+      - namenode
+    volumes:
+      - hadoop_datanode:/opt/hadoop/data/datanode
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_datanode_data_dir=file:///opt/hadoop/data/datanode
+      - HDFS_CONF_dfs_replication=1
+    networks:
+      - hadoop
+    command: ["/bin/bash", "-c", "sleep 30 && /opt/hadoop/bin/hdfs datanode"]

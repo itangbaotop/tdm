@@ -7,15 +7,19 @@ import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import top.itangbao.tdm.core.service.StorageService;
+
+import java.io.InputStream;
 
 import jakarta.annotation.PostConstruct;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "storage.type", havingValue = "minio", matchIfMissing = true)
 public class MinioStorageService implements StorageService {
 
     private final MinioClient minioClient;
@@ -40,33 +44,37 @@ public class MinioStorageService implements StorageService {
         }
     }
 
-    @Override
-    public String upload(MultipartFile file, Long taskId) {
-        try {
-            // 1. 生成对象名称 (路径)
-            // e.g., task_123/raw_data.dat
-            String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "raw.dat";
-            String objectName = String.format("task_%d/%s", taskId, originalFilename);
 
-            // 2. 执行上传
+
+    @Override
+    public String upload(MultipartFile file, String bucketName, String objectName) {
+        try {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucketName)
                             .object(objectName)
-                            .stream(file.getInputStream(), file.getSize(), -1) // 使用流式上传
+                            .stream(file.getInputStream(), file.getSize(), -1)
                             .contentType(file.getContentType())
                             .build()
             );
 
-            // 3. 返回一个标准化的 URI (s3a:// 是 Spark/Hadoop 识别的协议)
-            // 这就是我们将存储在 MySQL 中的 `raw_data_uri`
             String uri = String.format("s3a://%s/%s", bucketName, objectName);
-            log.info("File uploaded successfully. URI: {}", uri);
+            log.info("File uploaded to MinIO: {}", uri);
             return uri;
-
         } catch (Exception e) {
-            log.error("Error uploading file to MinIO", e);
-            throw new RuntimeException("Error uploading file", e);
+            throw new RuntimeException("MinIO upload failed", e);
         }
+    }
+
+    @Override
+    public InputStream download(String uri) {
+        // 简化实现，实际需要解析URI
+        throw new UnsupportedOperationException("MinIO download not implemented");
+    }
+
+    @Override
+    public void delete(String uri) {
+        // 简化实现，实际需要解析URI
+        throw new UnsupportedOperationException("MinIO delete not implemented");
     }
 }

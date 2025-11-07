@@ -1,6 +1,7 @@
 package top.itangbao.tdm.core.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,9 @@ import java.util.Map;
 @RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
 public class TaskController {
+
+    @Value("${minio.bucket}")
+    private String bucketName;
 
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
@@ -61,8 +65,12 @@ public class TaskController {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
 
+        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "raw.dat";
+        String objectName = String.format("task_%d/%s", taskId, originalFilename);
+
+
         // 2. (核心) 调用服务上传文件
-        String rawDataUri = storageService.upload(file, taskId);
+        String rawDataUri = storageService.upload(file, bucketName, objectName);
 
         // 3. (核心) 更新元数据
         task.setRawDataUri(rawDataUri);
