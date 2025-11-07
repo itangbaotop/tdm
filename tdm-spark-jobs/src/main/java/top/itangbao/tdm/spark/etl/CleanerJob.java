@@ -88,6 +88,8 @@ public class CleanerJob {
             String warehouseUrl;
             if ("influxdb".equals(warehouseProfile)) {
                 warehouseUrl = "jdbc:influxdb://" + warehouseHost + ":8086";
+            } else if ("doris".equals(warehouseProfile)) {
+                warehouseUrl = "jdbc:mysql://" + warehouseHost + ":9030/tdm_data";
             } else {
                 warehouseUrl = clickhouseJdbcUrl;
             }

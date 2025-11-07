@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  doris-fe:
+    image: apache/doris:fe-4.0.1
+    container_name: doris-fe
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+      - "9010:9010"
+    environment:
+      - FE_SERVERS=fe1:doris-fe:9010
+      - FE_ID=1
+    command: ["/opt/apache-doris/fe/bin/start_fe.sh"]
+
+  doris-be:
+    image: apache/doris:be-4.0.1
+    container_name: doris-be
+    ports:
+      - "8040:8040"
+      - "9050:9050"
+    depends_on:
+      - doris-fe
+    environment:
+      - FE_SERVERS=fe1:doris-fe:9010
+      - BE_ADDR=doris-be:9050
+    command: ["/opt/apache-doris/be/bin/start_be.sh"]
+
+
+volumes:
+  doris_fe_data:
+  doris_be_data:

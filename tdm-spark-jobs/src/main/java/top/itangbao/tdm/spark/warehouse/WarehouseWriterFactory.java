@@ -9,8 +9,7 @@ public class WarehouseWriterFactory {
             case "influxdb":
                 return new InfluxDBSparkWriter();
             case "doris":
-                // TODO: 实现DorisSparkWriter
-                throw new UnsupportedOperationException("Doris writer not implemented yet");
+                return new DorisSparkWriter();
             default:
                 throw new IllegalArgumentException("Unknown warehouse profile: " + profile);
         }
